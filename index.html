@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Tettest</title>
-	<script src="touchscreen.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tettest</title>
+    <script src="touchscreen.js"></script>
     <style>
         :root { --bg: #0f0f0f; --text: #ffffff; --canvas-bg: #1a1a1a; --grid: #ffffff; }
         body.light { --bg: #f0f0f0; --text: #000000; --canvas-bg: #e0e0e0; --grid: #000000; }
@@ -10,8 +11,8 @@
         #menu { display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 40px; }
         button { padding: 15px 30px; cursor: pointer; color: white; border: none; border-radius: 8px; width: 250px; font-weight: bold; }
         .icon-btn { width: 40px; height: 40px; background: #444; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: white; text-decoration: none; font-size: 20px; }
-        #ui { display: none; flex-direction: column; align-items: center; }
-        canvas { background: var(--canvas-bg); border-radius: 8px; transition: 0.3s; }
+        #ui { display: none; flex-direction: column; align-items: center; width: 100%; }
+        canvas { background: var(--canvas-bg); border-radius: 8px; transition: 0.3s; touch-action: none; max-width: 100vw; max-height: 80vh; object-fit: contain; }
         .octocat-icon { width: 24px; height: 24px; fill: white; }
     </style>
 </head>
@@ -112,9 +113,11 @@
         function pauseGame() { saveGame(); document.getElementById('ui').style.display = 'none'; document.getElementById('menu').style.display = 'flex'; }
         function resetHighScore() { if(confirm("Reset High Score?")) { highScore = 0; localStorage.setItem('tettest_hs', 0); document.getElementById('high-score-display').innerText = 0; } }
 
-        canvas.addEventListener('mousedown', e => {
+        function handleStart(cx, cy) {
             const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mx = (cx - rect.left) * scaleX, my = (cy - rect.top) * scaleY;
             hand.forEach((p, i) => {
                 if(!p) return;
                 const px = 70 + i*135, py = 520;
@@ -123,22 +126,29 @@
                     hand[i] = null; draw();
                 }
             });
-        });
+        }
 
-        window.addEventListener('mousemove', e => {
+        function handleMove(cx, cy) {
             if(drag) {
                 const rect = canvas.getBoundingClientRect();
-                drag.mx = e.clientX - rect.left; drag.my = e.clientY - rect.top;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                drag.mx = (cx - rect.left) * scaleX; 
+                drag.my = (cy - rect.top) * scaleY;
                 if(drag.scale < 1.0) drag.scale += 0.1;
                 draw();
             }
-        });
+        }
 
-        window.addEventListener('mouseup', e => {
+        function handleEnd(cx, cy) {
             if(!drag) return;
             const rect = canvas.getBoundingClientRect();
-            const gx = Math.floor((e.clientX - rect.left - 50) / CELL);
-            const gy = Math.floor((e.clientY - rect.top - 50) / CELL);
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const finalX = (cx - rect.left) * scaleX;
+            const finalY = (cy - rect.top) * scaleY;
+            const gx = Math.floor((finalX - 50) / CELL);
+            const gy = Math.floor((finalY - 50) / CELL);
             let can = gx >= 0 && gy >= 0 && drag.shape.every((r, y) => r.every((v, x) => !v || (gy+y < 10 && gx+x < 10 && !grid[gy+y][gx+x].v)));
             
             if(can) {
@@ -150,7 +160,15 @@
                 saveGame();
             } else { hand[drag.idx] = { shape: drag.shape, color: drag.color }; }
             drag = null; draw();
-        });
+        }
+
+        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
+        window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', e => handleEnd(e.clientX, e.clientY));
+
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+        window.addEventListener('touchmove', e => { if(drag) e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+        window.addEventListener('touchend', e => { handleEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY); });
 
         function resolveLines() {
             let toClear = [];
@@ -196,40 +214,35 @@
         document.getElementById('high-score-display').innerText = highScore;
         if(localStorage.getItem('tettest_save')) document.getElementById('btn-continue').style.display = 'block';
     </script>
-	
-	
-	
-	<script>
-(function() {
     
-    const style = document.createElement('style');
-    style.innerHTML = `
-        #aquasnail-loader {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #2596be;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 999999; transition: opacity 0.5s ease;
-        }
-        #aquasnail-loader img { width: 150px; height: 150px; border-radius: 50%; margin-bottom: 20px; }
-        #aquasnail-loader h2 { color: white; font-family: sans-serif; margin: 0; }
-    `;
-    document.head.appendChild(style);
+    <script>
+    (function() {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #aquasnail-loader {
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: #2596be;
+                display: flex; flex-direction: column; justify-content: center; align-items: center;
+                z-index: 999999; transition: opacity 0.5s ease;
+            }
+            #aquasnail-loader img { width: 150px; height: 150px; border-radius: 50%; margin-bottom: 20px; }
+            #aquasnail-loader h2 { color: white; font-family: sans-serif; margin: 0; }
+        `;
+        document.head.appendChild(style);
 
-    
-    const loader = document.createElement('div');
-    loader.id = 'aquasnail-loader';
-    loader.innerHTML = `
-        <img src="https://cdn.smilos.int.yt/2/p/asl/aquasnail.png" alt="Logo">
-        <h2>Aquasnail Labs</h2>
-    `;
-    document.body.appendChild(loader);
+        const loader = document.createElement('div');
+        loader.id = 'aquasnail-loader';
+        loader.innerHTML = `
+            <img src="https://cdn.smilos.int.yt/2/p/asl/aquasnail.png" alt="Logo">
+            <h2>Aquasnail Labs</h2>
+        `;
+        document.body.appendChild(loader);
 
-    
-    window.addEventListener('load', () => {
-        loader.style.opacity = '0';
-        setTimeout(() => loader.remove(), 1500);
-    });
-})();
-</script>
+        window.addEventListener('load', () => {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.remove(), 1500);
+        });
+    })();
+    </script>
 </body>
 </html>
