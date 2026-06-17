@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tettest</title>
+    <style>
+        :root { --bg: #0f0f0f; --text: #ffffff; --canvas-bg: #1a1a1a; --grid: #ffffff; }
+        body.light { --bg: #f0f0f0; --text: #000000; --canvas-bg: #e0e0e0; --grid: #000000; }
+        body { margin: 0; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; transition: 0.3s; }
+        #menu { display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 40px; }
+        button { padding: 15px 30px; cursor: pointer; color: white; border: none; border-radius: 8px; width: 250px; font-weight: bold; }
+        .icon-btn { width: 40px; height: 40px; background: #444; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: white; text-decoration: none; font-size: 20px; }
+        #ui { display: none; flex-direction: column; align-items: center; }
+        canvas { background: var(--canvas-bg); border-radius: 8px; transition: 0.3s; }
+        .octocat-icon { width: 24px; height: 24px; fill: white; }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1>Tettest</h1>
+        <button id="btn-continue" style="display:none; background:#FF5722" onclick="loadGame()">CONTINUE</button>
+        <button style="background:#8BC34A" onclick="newGame()">NEW GAME</button>
+        <button style="background:#2196F3" onclick="toggleTheme()">LIGHT/DARK MODE</button>
+        <button style="background:#555" onclick="resetHighScore()">Reset High Score</button>
+        <p>High Score: <span id="high-score-display">0</span></p>
+        <p style="font-size: 0.8em; opacity: 0.6;">Made by Aquasnail Labs | 100% open-source</p>
+    </div>
+
+    <div id="ui">
+        <div style="text-align:center; margin-bottom:10px;">
+            <div style="font-size: 1.2em; margin-bottom: 5px;">Score: <span id="score">0</span> | High: <span id="hscore">0</span></div>
+            <button class="icon-btn" onclick="pauseGame()">&#9632;</button>
+            <a href="https://github.com/aquasnail-labs/tettest" target="_blank" class="icon-btn" style="background:#24292e">
+                <svg class="octocat-icon" viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.99 7.99 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+            </a>
+        </div>
+        <canvas id="game"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const CELL = 40;
+        let grid, hand, score, highScore = localStorage.getItem('tettest_hs') || 0;
+        let drag = null, flash = 0;
+
+        if(localStorage.getItem('tettest_theme') === 'light') {
+            document.body.classList.add('light');
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light');
+            localStorage.setItem('tettest_theme', document.body.classList.contains('light') ? 'light' : 'dark');
+            draw();
+        }
+
+        const TYPES = [
+            { shape: [[1,1], [1,1]], color: '#F4D03F' }, { shape: [[1,1,1,1]], color: '#A93226' },
+            { shape: [[1], [1], [1], [1]], color: '#884EA0' }, { shape: [[0,1], [1,1], [1,0]], color: '#27AE60' },
+            { shape: [[1,0], [1,0], [1,1]], color: '#E67E22' }, { shape: [[1,1]], color: '#5D6D7E' },
+            { shape: [[1]], color: '#2980B9' }, { shape: [[1,1,1],[1,1,1],[1,1,1]], color: '#FF00FF' }
+        ];
+
+        function newGame() {
+            if(confirm("Reset score and start new game?")) {
+                score = 0;
+                document.getElementById('score').innerText = score;
+                grid = Array.from({length: 10}, () => Array(10).fill({v:0, c:null}));
+                refillHand();
+                startGame();
+            }
+        }
+
+        function startGame() {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('ui').style.display = 'flex';
+            document.getElementById('hscore').innerText = highScore;
+            saveGame(); draw();
+        }
+
+        function refillHand() {
+            let pool = [...TYPES].sort(() => Math.random() - 0.5);
+            hand = [pool[0], pool[1], pool[2]];
+        }
+
+        function checkGameOver() {
+            for(let p of hand) {
+                if(!p) continue;
+                for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
+                    let can = p.shape.every((r, ry) => r.every((v, rx) => !v || (y+ry < 10 && x+rx < 10 && !grid[y+ry][x+rx].v)));
+                    if(can) return;
+                }
+            }
+            alert("GAME OVER! Final Score: " + score);
+            localStorage.removeItem('tettest_save');
+            location.reload();
+        }
+
+        function saveGame() {
+            localStorage.setItem('tettest_save', JSON.stringify({grid, hand, score}));
+            localStorage.setItem('tettest_hs', highScore);
+            document.getElementById('btn-continue').style.display = 'block';
+        }
+
+        function loadGame() {
+            const data = JSON.parse(localStorage.getItem('tettest_save'));
+            grid = data.grid; hand = data.hand; score = data.score;
+            document.getElementById('score').innerText = score;
+            startGame();
+        }
+
+        function pauseGame() { saveGame(); document.getElementById('ui').style.display = 'none'; document.getElementById('menu').style.display = 'flex'; }
+        function resetHighScore() { if(confirm("Reset High Score?")) { highScore = 0; localStorage.setItem('tettest_hs', 0); document.getElementById('high-score-display').innerText = 0; } }
+
+        canvas.addEventListener('mousedown', e => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            hand.forEach((p, i) => {
+                if(!p) return;
+                const px = 70 + i*135, py = 520;
+                if(mx > px && mx < px + 100 && my > py && my < py + 100) {
+                    drag = { ...p, idx: i, mx: mx, my: my, scale: 0.6 };
+                    hand[i] = null; draw();
+                }
+            });
+        });
+
+        window.addEventListener('mousemove', e => {
+            if(drag) {
+                const rect = canvas.getBoundingClientRect();
+                drag.mx = e.clientX - rect.left; drag.my = e.clientY - rect.top;
+                if(drag.scale < 1.0) drag.scale += 0.1;
+                draw();
+            }
+        });
+
+        window.addEventListener('mouseup', e => {
+            if(!drag) return;
+            const rect = canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left - 50) / CELL);
+            const gy = Math.floor((e.clientY - rect.top - 50) / CELL);
+            let can = gx >= 0 && gy >= 0 && drag.shape.every((r, y) => r.every((v, x) => !v || (gy+y < 10 && gx+x < 10 && !grid[gy+y][gx+x].v)));
+            
+            if(can) {
+                let count = 0;
+                drag.shape.forEach((r, y) => r.forEach((v, x) => { if(v) { grid[gy+y][gx+x] = {v:1, c:drag.color}; count++; }}));
+                score += count; document.getElementById('score').innerText = score;
+                resolveLines();
+                if(hand.every(h => !h)) { refillHand(); checkGameOver(); }
+                saveGame();
+            } else { hand[drag.idx] = { shape: drag.shape, color: drag.color }; }
+            drag = null; draw();
+        });
+
+        function resolveLines() {
+            let toClear = [];
+            for(let i=0; i<10; i++) {
+                if(grid[i].every(c => c.v)) toClear.push({type: 'row', idx: i});
+                if(grid.every(row => row[i].v)) toClear.push({type: 'col', idx: i});
+            }
+            if(toClear.length > 0) {
+                flash = 10;
+                toClear.forEach(t => { 
+                    score += 10;
+                    t.type === 'row' ? grid[t.idx].fill({v:0, c:null}) : grid.forEach(r => r[t.idx] = {v:0, c:null}); 
+                });
+                if(score > highScore) { highScore = score; document.getElementById('hscore').innerText = highScore; }
+                document.getElementById('score').innerText = score;
+                setTimeout(draw, 200);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, 500, 650);
+            grid.forEach((r, y) => r.forEach((cell, x) => {
+                ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--grid');
+                ctx.lineWidth = 0.5; ctx.strokeRect(50 + x*CELL, 50 + y*CELL, CELL, CELL);
+                if(cell.v) { ctx.fillStyle = cell.c; ctx.fillRect(50 + x*CELL+2, 50 + y*CELL+2, CELL-4, CELL-4); }
+            }));
+            hand.forEach((p, i) => {
+                if(!p) return;
+                p.shape.forEach((r, y) => r.forEach((v, x) => {
+                    if(v) { ctx.fillStyle = p.color; ctx.fillRect(70 + i*135 + x*25, 520 + y*25, 20, 20); }
+                }));
+            });
+            if(drag) {
+                const s = drag.scale * CELL;
+                drag.shape.forEach((r, y) => r.forEach((v, x) => {
+                    if(v) { ctx.fillStyle = drag.color; ctx.fillRect(drag.mx - s/2 + x*s, drag.my - s/2 + y*s, s-2, s-2); }
+                }));
+            }
+            if(flash > 0) { flash--; requestAnimationFrame(draw); }
+        }
+
+        canvas.width = 500; canvas.height = 650;
+        document.getElementById('high-score-display').innerText = highScore;
+        if(localStorage.getItem('tettest_save')) document.getElementById('btn-continue').style.display = 'block';
+    </script>
+	
+	
+	
+	<script>
+(function() {
+    
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #aquasnail-loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #2596be;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 999999; transition: opacity 0.5s ease;
+        }
+        #aquasnail-loader img { width: 150px; height: 150px; border-radius: 50%; margin-bottom: 20px; }
+        #aquasnail-loader h2 { color: white; font-family: sans-serif; margin: 0; }
+    `;
+    document.head.appendChild(style);
+
+    
+    const loader = document.createElement('div');
+    loader.id = 'aquasnail-loader';
+    loader.innerHTML = `
+        <img src="https://cdn.smilos.int.yt/2/p/asl/aquasnail.png" alt="Logo">
+        <h2>Aquasnail Labs</h2>
+    `;
+    document.body.appendChild(loader);
+
+    
+    window.addEventListener('load', () => {
+        loader.style.opacity = '0';
+        setTimeout(() => loader.remove(), 1500);
+    });
+})();
+</script>
+</body>
+</html>
