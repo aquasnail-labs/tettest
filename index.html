@@ -62,11 +62,34 @@
             { shape: [[1]], color: '#2980B9' }, { shape: [[1,1,1],[1,1,1],[1,1,1]], color: '#FF00FF' }
         ];
 
+        function canPieceFit(piece, g) {
+            for(let y = 0; y < 10; y++) {
+                for(let x = 0; x < 10; x++) {
+                    let fits = piece.shape.every((r, ry) =>
+                        r.every((v, rx) => !v || (y+ry < 10 && x+rx < 10 && !g[y+ry][x+rx].v))
+                    );
+                    if(fits) return true;
+                }
+            }
+            return false;
+        }
+
+        function checkGameOver() {
+            const anyFits = hand.some(p => p && canPieceFit(p, grid));
+            if(!anyFits) {
+                setTimeout(() => {
+                    alert("GAME OVER! Final Score: " + score);
+                    localStorage.removeItem('tettest_save');
+                    location.reload();
+                }, 100);
+            }
+        }
+
         function newGame() {
             if(confirm("Reset score and start new game?")) {
                 score = 0;
                 document.getElementById('score').innerText = score;
-                grid = Array.from({length: 10}, () => Array(10).fill({v:0, c:null}));
+                grid = Array.from({length: 10}, () => Array(10).fill(null).map(() => ({v:0, c:null})));
                 refillHand();
                 startGame();
             }
@@ -82,19 +105,6 @@
         function refillHand() {
             let pool = [...TYPES].sort(() => Math.random() - 0.5);
             hand = [pool[0], pool[1], pool[2]];
-        }
-
-        function checkGameOver() {
-            for(let p of hand) {
-                if(!p) continue;
-                for(let y=0; y<10; y++) for(let x=0; x<10; x++) {
-                    let can = p.shape.every((r, ry) => r.every((v, rx) => !v || (y+ry < 10 && x+rx < 10 && !grid[y+ry][x+rx].v)));
-                    if(can) return;
-                }
-            }
-            alert("GAME OVER! Final Score: " + score);
-            localStorage.removeItem('tettest_save');
-            location.reload();
         }
 
         function saveGame() {
@@ -156,9 +166,12 @@
                 drag.shape.forEach((r, y) => r.forEach((v, x) => { if(v) { grid[gy+y][gx+x] = {v:1, c:drag.color}; count++; }}));
                 score += count; document.getElementById('score').innerText = score;
                 resolveLines();
-                if(hand.every(h => !h)) { refillHand(); checkGameOver(); }
+                if(hand.every(h => !h)) { refillHand(); }
                 saveGame();
-            } else { hand[drag.idx] = { shape: drag.shape, color: drag.color }; }
+                checkGameOver();
+            } else {
+                hand[drag.idx] = { shape: drag.shape, color: drag.color };
+            }
             drag = null; draw();
         }
 
