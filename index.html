@@ -7,13 +7,23 @@
     <style>
         :root { --bg: #0f0f0f; --text: #ffffff; --canvas-bg: #1a1a1a; --grid: #ffffff; }
         body.light { --bg: #f0f0f0; --text: #000000; --canvas-bg: #e0e0e0; --grid: #000000; }
-        body { margin: 0; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; transition: 0.3s; }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; }
+        body { margin: 0; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; font-family: sans-serif; transition: background 0.3s; }
         #menu { display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 40px; }
-        button { padding: 15px 30px; cursor: pointer; color: white; border: none; border-radius: 8px; width: 250px; font-weight: bold; }
-        .icon-btn { width: 40px; height: 40px; background: #444; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: white; text-decoration: none; font-size: 20px; }
-        #ui { display: none; flex-direction: column; align-items: center; width: 100%; }
-        canvas { background: var(--canvas-bg); border-radius: 8px; transition: 0.3s; touch-action: none; max-width: 100vw; max-height: 80vh; object-fit: contain; }
-        .octocat-icon { width: 24px; height: 24px; fill: white; }
+        button { padding: 15px 30px; cursor: pointer; color: white; border: none; border-radius: 8px; width: 250px; font-weight: bold; transition: transform 0.1s ease, filter 0.15s ease; }
+        button:active { transform: scale(0.95); filter: brightness(0.85); }
+        .icon-btn { width: 40px; height: 40px; background: #444; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: white; text-decoration: none; font-size: 20px; transition: transform 0.1s ease; }
+        .icon-btn:active { transform: scale(0.9); }
+        #ui { display: none; flex-direction: column; align-items: center; width: 100%; height: 100%; justify-content: center; padding: 4px; }
+        #topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+        #topbar > div { font-size: 1.1em; }
+        canvas { background: var(--canvas-bg); border-radius: 8px; transition: background 0.3s; touch-action: none; aspect-ratio: 500 / 650; width: min(98vw, calc(94vh * 500 / 650)); height: auto; max-height: 94vh; display: block; }
+        .octocat-icon { width: 22px; height: 22px; fill: white; }
+        @media (max-height: 700px) {
+            #topbar { font-size: 0.85em; margin-bottom: 2px; }
+            .icon-btn { width: 32px; height: 32px; font-size: 16px; }
+        }
     </style>
 </head>
 <body>
@@ -22,14 +32,15 @@
         <button id="btn-continue" style="display:none; background:#FF5722" onclick="loadGame()">CONTINUE</button>
         <button style="background:#8BC34A" onclick="newGame()">NEW GAME</button>
         <button style="background:#2196F3" onclick="toggleTheme()">LIGHT/DARK MODE</button>
+        <button id="btn-sound" style="background:#9C27B0" onclick="toggleSound()">SOUND: ON</button>
         <button style="background:#555" onclick="resetHighScore()">Reset High Score</button>
         <p>High Score: <span id="high-score-display">0</span></p>
         <p style="font-size: 0.8em; opacity: 0.6;">Made by Aquasnail Labs | 100% open-source</p>
     </div>
 
     <div id="ui">
-        <div style="text-align:center; margin-bottom:10px;">
-            <div style="font-size: 1.2em; margin-bottom: 5px;">Score: <span id="score">0</span> | High: <span id="hscore">0</span></div>
+        <div id="topbar">
+            <div>Score: <span id="score">0</span> | High: <span id="hscore">0</span></div>
             <button class="icon-btn" onclick="pauseGame()">&#9632;</button>
             <a href="https://github.com/aquasnail-labs/tettest" target="_blank" class="icon-btn" style="background:#24292e">
                 <svg class="octocat-icon" viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.99 7.99 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
@@ -42,8 +53,50 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         const CELL = 40;
+        const W = 500, H = 650;
         let grid, hand, score, highScore = localStorage.getItem('tettest_hs') || 0;
-        let drag = null, flash = 0;
+        let drag = null, flash = 0, flashCells = [];
+        let popAnims = []; // {x,y,start}
+        let shakeT = 0;
+        let soundOn = localStorage.getItem('tettest_sound') !== 'off';
+
+        // ---------- Sound ----------
+        let actx = null;
+        function ensureAudio() {
+            if (!actx) {
+                try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { soundOn = false; }
+            } else if (actx.state === 'suspended') {
+                actx.resume();
+            }
+        }
+        function beep(freq, dur, type, vol, delay) {
+            if (!soundOn) return;
+            ensureAudio();
+            if (!actx) return;
+            const t0 = actx.currentTime + (delay || 0);
+            const osc = actx.createOscillator();
+            const gain = actx.createGain();
+            osc.type = type || 'sine';
+            osc.frequency.setValueAtTime(freq, t0);
+            gain.gain.setValueAtTime(0, t0);
+            gain.gain.linearRampToValueAtTime(vol || 0.15, t0 + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+            osc.connect(gain).connect(actx.destination);
+            osc.start(t0);
+            osc.stop(t0 + dur + 0.02);
+        }
+        function sndPickup() { beep(380, 0.07, 'triangle', 0.12); }
+        function sndPlace() { beep(220, 0.1, 'square', 0.15); }
+        function sndInvalid() { beep(110, 0.15, 'sawtooth', 0.12); }
+        function sndLine(n) { for (let i=0;i<Math.min(n,4);i++) beep(440 + i*140, 0.18, 'sine', 0.18, i*0.06); }
+        function sndGameOver() { beep(300,0.25,'sawtooth',0.15,0); beep(220,0.25,'sawtooth',0.15,0.15); beep(140,0.4,'sawtooth',0.15,0.3); }
+        function toggleSound() {
+            soundOn = !soundOn;
+            localStorage.setItem('tettest_sound', soundOn ? 'on' : 'off');
+            document.getElementById('btn-sound').innerText = 'SOUND: ' + (soundOn ? 'ON' : 'OFF');
+            if (soundOn) { ensureAudio(); sndPickup(); }
+        }
+        document.getElementById('btn-sound').innerText = 'SOUND: ' + (soundOn ? 'ON' : 'OFF');
 
         if(localStorage.getItem('tettest_theme') === 'light') {
             document.body.classList.add('light');
@@ -77,11 +130,12 @@
         function checkGameOver() {
             const anyFits = hand.some(p => p && canPieceFit(p, grid));
             if(!anyFits) {
+                sndGameOver();
                 setTimeout(() => {
                     alert("GAME OVER! Final Score: " + score);
                     localStorage.removeItem('tettest_save');
                     location.reload();
-                }, 100);
+                }, 250);
             }
         }
 
@@ -123,65 +177,91 @@
         function pauseGame() { saveGame(); document.getElementById('ui').style.display = 'none'; document.getElementById('menu').style.display = 'flex'; }
         function resetHighScore() { if(confirm("Reset High Score?")) { highScore = 0; localStorage.setItem('tettest_hs', 0); document.getElementById('high-score-display').innerText = 0; } }
 
-        function handleStart(cx, cy) {
+        // ---------- Drag handling ----------
+        // On touch, lift the piece well above the finger so it isn't hidden, and
+        // snap based on the *visual* (lifted) position, not the raw touch point.
+        const TOUCH_LIFT = 110;
+        let isTouchDrag = false;
+
+        function toCanvasCoords(cx, cy) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
-            const mx = (cx - rect.left) * scaleX, my = (cy - rect.top) * scaleY;
+            return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+        }
+
+        function handleStart(cx, cy, touch) {
+            const { x: mx, y: my } = toCanvasCoords(cx, cy);
+            isTouchDrag = !!touch;
             hand.forEach((p, i) => {
                 if(!p) return;
                 const px = 70 + i*135, py = 520;
-                if(mx > px && mx < px + 100 && my > py && my < py + 100) {
-                    drag = { ...p, idx: i, mx: mx, my: my, scale: 0.6 };
-                    hand[i] = null; draw();
+                if(mx > px - 15 && mx < px + 115 && my > py - 15 && my < py + 115) {
+                    drag = { ...p, idx: i, mx: mx, my: my, scale: isTouchDrag ? 0.85 : 0.6 };
+                    hand[i] = null;
+                    sndPickup();
+                    draw();
                 }
             });
         }
 
         function handleMove(cx, cy) {
             if(drag) {
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                drag.mx = (cx - rect.left) * scaleX; 
-                drag.my = (cy - rect.top) * scaleY;
-                if(drag.scale < 1.0) drag.scale += 0.1;
+                const { x, y } = toCanvasCoords(cx, cy);
+                drag.mx = x;
+                drag.my = y;
+                if(drag.scale < 1.0) drag.scale += 0.12;
                 draw();
             }
         }
 
-        function handleEnd(cx, cy) {
+        function dragAnchor() {
+            // visual position used both for drawing and for snap calculation
+            return { x: drag.mx, y: drag.my };
+        }
+
+        function dragTargetCell() {
+            const { x, y } = dragAnchor();
+            const w = drag.shape[0].length, h = drag.shape.length;
+            const topLeftX = x - (w * CELL) / 2;
+            const topLeftY = y - (h * CELL) / 2;
+            const gx = Math.round((topLeftX - 50) / CELL);
+            const gy = Math.round((topLeftY - 50) / CELL);
+            return { gx, gy };
+        }
+
+        function handleEnd() {
             if(!drag) return;
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const finalX = (cx - rect.left) * scaleX;
-            const finalY = (cy - rect.top) * scaleY;
-            const gx = Math.floor((finalX - 50) / CELL);
-            const gy = Math.floor((finalY - 50) / CELL);
+            const { gx, gy } = dragTargetCell();
             let can = gx >= 0 && gy >= 0 && drag.shape.every((r, y) => r.every((v, x) => !v || (gy+y < 10 && gx+x < 10 && !grid[gy+y][gx+x].v)));
-            
+
             if(can) {
                 let count = 0;
-                drag.shape.forEach((r, y) => r.forEach((v, x) => { if(v) { grid[gy+y][gx+x] = {v:1, c:drag.color}; count++; }}));
+                const placedCells = [];
+                drag.shape.forEach((r, y) => r.forEach((v, x) => { if(v) { grid[gy+y][gx+x] = {v:1, c:drag.color}; count++; placedCells.push({x:gx+x,y:gy+y}); }}));
                 score += count; document.getElementById('score').innerText = score;
+                const now = performance.now();
+                placedCells.forEach(c => popAnims.push({x:c.x, y:c.y, start: now}));
+                sndPlace();
                 resolveLines();
                 if(hand.every(h => !h)) { refillHand(); }
                 saveGame();
                 checkGameOver();
             } else {
                 hand[drag.idx] = { shape: drag.shape, color: drag.color };
+                sndInvalid();
+                shakeT = 8;
             }
             drag = null; draw();
         }
 
-        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
+        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY, false));
         window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
-        window.addEventListener('mouseup', e => handleEnd(e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => handleEnd());
 
-        canvas.addEventListener('touchstart', e => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY, true); }, {passive: false});
         window.addEventListener('touchmove', e => { if(drag) e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
-        window.addEventListener('touchend', e => { handleEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY); });
+        window.addEventListener('touchend', () => { handleEnd(); });
 
         function resolveLines() {
             let toClear = [];
@@ -190,44 +270,89 @@
                 if(grid.every(row => row[i].v)) toClear.push({type: 'col', idx: i});
             }
             if(toClear.length > 0) {
-                flash = 10;
-                toClear.forEach(t => { 
+                flash = 16;
+                flashCells = [];
+                toClear.forEach(t => {
                     score += 10;
-                    t.type === 'row' ? grid[t.idx].fill({v:0, c:null}) : grid.forEach(r => r[t.idx] = {v:0, c:null}); 
+                    if (t.type === 'row') { for(let x=0;x<10;x++) flashCells.push({x,y:t.idx}); grid[t.idx].fill({v:0, c:null}); }
+                    else { for(let y=0;y<10;y++) flashCells.push({x:t.idx,y}); grid.forEach(r => r[t.idx] = {v:0, c:null}); }
                 });
+                sndLine(toClear.length);
                 if(score > highScore) { highScore = score; document.getElementById('hscore').innerText = highScore; }
                 document.getElementById('score').innerText = score;
-                setTimeout(draw, 200);
+                requestAnimationFrame(draw);
             }
         }
 
         function draw() {
-            ctx.clearRect(0, 0, 500, 650);
+            ctx.save();
+            let ox = 0, oy = 0;
+            if (shakeT > 0) {
+                ox = (Math.random() - 0.5) * shakeT;
+                oy = (Math.random() - 0.5) * shakeT;
+                shakeT--;
+            }
+            ctx.clearRect(0, 0, W, H);
+            ctx.translate(ox, oy);
+
+            const now = performance.now();
+            popAnims = popAnims.filter(a => now - a.start < 180);
+
             grid.forEach((r, y) => r.forEach((cell, x) => {
                 ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--grid');
                 ctx.lineWidth = 0.5; ctx.strokeRect(50 + x*CELL, 50 + y*CELL, CELL, CELL);
-                if(cell.v) { ctx.fillStyle = cell.c; ctx.fillRect(50 + x*CELL+2, 50 + y*CELL+2, CELL-4, CELL-4); }
+                if(cell.v) {
+                    const anim = popAnims.find(a => a.x === x && a.y === y);
+                    let s = 1;
+                    if (anim) { s = 0.4 + 0.6 * Math.min(1, (now - anim.start) / 180); }
+                    ctx.fillStyle = cell.c;
+                    const size = (CELL-4) * s;
+                    const cx = 50 + x*CELL + CELL/2, cy = 50 + y*CELL + CELL/2;
+                    ctx.fillRect(cx - size/2, cy - size/2, size, size);
+                }
             }));
+
+            // line-clear flash overlay
+            if (flash > 0) {
+                const alpha = flash / 16;
+                ctx.fillStyle = `rgba(255,255,255,${alpha * 0.85})`;
+                flashCells.forEach(c => ctx.fillRect(50 + c.x*CELL, 50 + c.y*CELL, CELL, CELL));
+                flash--;
+            }
+
             hand.forEach((p, i) => {
                 if(!p) return;
                 p.shape.forEach((r, y) => r.forEach((v, x) => {
                     if(v) { ctx.fillStyle = p.color; ctx.fillRect(70 + i*135 + x*25, 520 + y*25, 20, 20); }
                 }));
             });
+
             if(drag) {
+                const { x: ax, y: ay } = dragAnchor();
                 const s = drag.scale * CELL;
                 drag.shape.forEach((r, y) => r.forEach((v, x) => {
-                    if(v) { ctx.fillStyle = drag.color; ctx.fillRect(drag.mx - s/2 + x*s, drag.my - s/2 + y*s, s-2, s-2); }
+                    if(v) {
+                        ctx.fillStyle = drag.color;
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                        ctx.shadowBlur = 8;
+                        ctx.fillRect(ax - (drag.shape[0].length*s)/2 + x*s, ay - (drag.shape.length*s)/2 + y*s, s-2, s-2);
+                        ctx.shadowBlur = 0;
+                    }
                 }));
             }
-            if(flash > 0) { flash--; requestAnimationFrame(draw); }
+
+            ctx.restore();
+
+            if(flash > 0 || (drag && drag.scale < 1.0) || popAnims.length > 0 || shakeT > 0) {
+                requestAnimationFrame(draw);
+            }
         }
 
-        canvas.width = 500; canvas.height = 650;
+        canvas.width = W; canvas.height = H;
         document.getElementById('high-score-display').innerText = highScore;
         if(localStorage.getItem('tettest_save')) document.getElementById('btn-continue').style.display = 'block';
     </script>
-    
+
     <script>
     (function() {
         const style = document.createElement('style');
